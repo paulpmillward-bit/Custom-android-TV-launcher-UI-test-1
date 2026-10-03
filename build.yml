@@ -1,0 +1,1875 @@
+name: Build NEXUS APK
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create project files
+        run: |
+          mkdir -p .
+          cat > settings.gradle.kts <<'__END__'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "TVLauncher"
+          include(":app")
+          __END__
+          mkdir -p .
+          cat > build.gradle.kts <<'__END__'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.20" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.0.20" apply false
+          }
+          __END__
+          mkdir -p .
+          cat > gradle.properties <<'__END__'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          __END__
+          mkdir -p app
+          cat > app/build.gradle.kts <<'__END__'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+              id("org.jetbrains.kotlin.plugin.compose")
+          }
+
+          android {
+              namespace = "com.example.tvlauncher"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.example.tvlauncher"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+              buildFeatures { compose = true }
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = file("debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+
+          dependencies {
+              implementation(platform("androidx.compose:compose-bom:2024.09.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.activity:activity-compose:1.9.2")
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.core:core-splashscreen:1.0.1")
+          }
+          __END__
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
+              <uses-permission android:name="android.permission.ACCESS_ALL_EPG_DATA" />
+              <uses-permission android:name="android.permission.READ_TV_LISTINGS" />
+
+              <uses-feature android:name="android.software.leanback" android:required="false" />
+              <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+              </queries>
+
+              <application
+                  android:label="@string/app_name"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:banner="@drawable/nexus_banner"
+                  android:theme="@style/Theme.TVLauncher">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:theme="@style/Theme.NexusStarting"
+                      android:launchMode="singleTask">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                      </intent-filter>
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                      </intent-filter>
+                  </activity>
+
+                  <service
+                      android:name=".HomeAccessibilityService"
+                      android:exported="true"
+                      android:label="@string/service_label"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_config" />
+                  </service>
+              </application>
+          </manifest>
+          __END__
+          mkdir -p app/src/main/res/xml
+          cat > app/src/main/res/xml/accessibility_config.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:notificationTimeout="100"
+              android:canRetrieveWindowContent="false"
+              android:accessibilityFlags="flagDefault"
+              android:isAccessibilityTool="true"
+              android:description="@string/service_desc" />
+          __END__
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/strings.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="app_name">NEXUS</string>
+              <string name="service_label">NEXUS Home Button</string>
+              <string name="service_desc">Opens NEXUS when you press the Home button.</string>
+          </resources>
+          __END__
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/themes.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="Theme.TVLauncher" parent="android:Theme.Material.NoActionBar">
+                  <item name="android:windowBackground">@color/nexus_bg</item>
+              </style>
+              <style name="Theme.NexusStarting" parent="Theme.SplashScreen">
+                  <item name="windowSplashScreenBackground">@color/nexus_bg</item>
+                  <item name="windowSplashScreenAnimatedIcon">@drawable/nexus_logo</item>
+                  <item name="postSplashScreenTheme">@style/Theme.TVLauncher</item>
+              </style>
+          </resources>
+          __END__
+          mkdir -p app/src/main/java/com/example/tvlauncher
+          cat > app/src/main/java/com/example/tvlauncher/HomeAccessibilityService.kt <<'__END__'
+          package com.example.tvlauncher
+
+          import android.accessibilityservice.AccessibilityService
+          import android.content.Intent
+          import android.os.SystemClock
+          import android.util.Log
+          import android.widget.Toast
+          import android.view.accessibility.AccessibilityEvent
+
+          val STOCK_LAUNCHERS = setOf(
+              "com.google.android.apps.tv.launcherx",
+              "com.google.android.tvlauncher",
+              "com.google.android.leanbacklauncher"
+          )
+
+          class HomeAccessibilityService : AccessibilityService() {
+              private var last = 0L
+
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+                  try {
+                      Toast.makeText(this, "NEXUS Home Button is on", Toast.LENGTH_LONG).show()
+                  } catch (t: Throwable) {
+                      Log.e("TVLauncher", "toast failed", t)
+                  }
+              }
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+                  try {
+                      if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+                      val pkg = event.packageName?.toString() ?: return
+                      if (pkg !in STOCK_LAUNCHERS) return
+                      val now = SystemClock.elapsedRealtime()
+                      if (now - last < 1000) return
+                      last = now
+                      val i = Intent(this, MainActivity::class.java)
+                          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                      startActivity(i)
+                  } catch (t: Throwable) {
+                      Log.e("TVLauncher", "event failed", t)
+                  }
+              }
+
+              override fun onInterrupt() {}
+          }
+          __END__
+          mkdir -p app/src/main/java/com/example/tvlauncher
+          cat > app/src/main/java/com/example/tvlauncher/MainActivity.kt <<'__END__'
+          package com.example.tvlauncher
+
+          import android.content.ComponentName
+          import android.content.Context
+          import android.content.Intent
+          import android.graphics.BitmapFactory
+          import android.net.ConnectivityManager
+          import android.net.NetworkCapabilities
+          import android.net.Uri
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.view.KeyEvent as AKeyEvent
+          import android.widget.Toast
+          import androidx.activity.ComponentActivity
+          import androidx.activity.addCallback
+          import androidx.activity.compose.setContent
+          import androidx.compose.animation.core.Animatable
+          import androidx.compose.animation.core.LinearEasing
+          import androidx.compose.animation.core.animateFloatAsState
+          import androidx.compose.animation.core.tween
+          import androidx.compose.foundation.Canvas
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.border
+          import androidx.compose.foundation.focusable
+          import androidx.compose.foundation.gestures.detectTapGestures
+          import androidx.compose.foundation.layout.Arrangement
+          import androidx.compose.foundation.layout.Box
+          import androidx.compose.foundation.layout.BoxScope
+          import androidx.compose.foundation.layout.Column
+          import androidx.compose.foundation.layout.PaddingValues
+          import androidx.compose.foundation.layout.Row
+          import androidx.compose.foundation.layout.Spacer
+          import androidx.compose.foundation.layout.aspectRatio
+          import androidx.compose.foundation.layout.fillMaxHeight
+          import androidx.compose.foundation.layout.fillMaxSize
+          import androidx.compose.foundation.layout.fillMaxWidth
+          import androidx.compose.foundation.layout.height
+          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.size
+          import androidx.compose.foundation.layout.width
+          import androidx.compose.foundation.lazy.LazyColumn
+          import androidx.compose.foundation.lazy.LazyRow
+          import androidx.compose.foundation.lazy.grid.GridCells
+          import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+          import androidx.compose.foundation.lazy.grid.items as gridItems
+          import androidx.compose.foundation.lazy.items
+          import androidx.compose.foundation.lazy.itemsIndexed
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.foundation.text.BasicTextField
+          import androidx.compose.foundation.text.KeyboardActions
+          import androidx.compose.foundation.text.KeyboardOptions
+          import androidx.compose.material3.Text
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.runtime.LaunchedEffect
+          import androidx.compose.runtime.MutableIntState
+          import androidx.compose.runtime.MutableState
+          import androidx.compose.runtime.compositionLocalOf
+          import androidx.compose.runtime.getValue
+          import androidx.compose.runtime.key
+          import androidx.compose.runtime.mutableIntStateOf
+          import androidx.compose.runtime.mutableStateMapOf
+          import androidx.compose.runtime.mutableStateOf
+          import androidx.compose.runtime.produceState
+          import androidx.compose.runtime.remember
+          import androidx.compose.runtime.rememberUpdatedState
+          import androidx.compose.runtime.setValue
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.focus.FocusRequester
+          import androidx.compose.ui.focus.focusRequester
+          import androidx.compose.ui.focus.onFocusChanged
+          import androidx.compose.ui.geometry.Offset
+          import androidx.compose.ui.geometry.Size
+          import androidx.compose.ui.graphics.Brush
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.ImageBitmap
+          import androidx.compose.ui.graphics.Path
+          import androidx.compose.ui.graphics.PathEffect
+          import androidx.compose.ui.graphics.SolidColor
+          import androidx.compose.ui.graphics.StrokeCap
+          import androidx.compose.ui.graphics.StrokeJoin
+          import androidx.compose.ui.graphics.asImageBitmap
+          import androidx.compose.ui.graphics.drawscope.DrawScope
+          import androidx.compose.ui.graphics.drawscope.Stroke
+          import androidx.compose.ui.graphics.graphicsLayer
+          import androidx.compose.ui.input.key.onKeyEvent
+          import androidx.compose.ui.input.key.onPreviewKeyEvent
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.TextStyle
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.input.ImeAction
+          import androidx.compose.ui.text.style.TextAlign
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.Dp
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import androidx.compose.ui.zIndex
+          import androidx.core.graphics.drawable.toBitmap
+          import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.coroutineScope
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.launch
+          import kotlinx.coroutines.withContext
+          import org.json.JSONObject
+          import java.net.HttpURLConnection
+          import java.net.URL
+          import java.net.URLEncoder
+          import java.text.SimpleDateFormat
+          import java.util.Date
+          import java.util.Locale
+          import java.util.concurrent.ConcurrentHashMap
+
+          // ---------- data ----------
+
+          data class AppItem(
+              val label: String,
+              val component: ComponentName,
+              val image: ImageBitmap,
+              val isBanner: Boolean
+          )
+
+          class WatchItem(
+              val title: String,
+              val intentUri: String,
+              val poster: ImageBitmap?,
+              val badge: ImageBitmap?,
+              val progress: Float,
+              val info: String
+          )
+
+          class WatchResult(val items: List<WatchItem>, val status: String)
+
+          class ThemeColors(val name: String, val edge: Color, val mid: Color)
+
+          class UiStyle(val corner: Dp, val highlight: Color?, val scale: Float, val animMs: Int)
+
+          class Opt(val key: String, val title: String, val choices: List<String>)
+
+          val THEMES = listOf(
+              ThemeColors("Teal", Color(0xFF06202F), Color(0xFF1B6682)),
+              ThemeColors("Midnight", Color(0xFF05060F), Color(0xFF26358F)),
+              ThemeColors("Ocean", Color(0xFF03111F), Color(0xFF0E5FA8)),
+              ThemeColors("Forest", Color(0xFF04170E), Color(0xFF237A4F)),
+              ThemeColors("Sunset", Color(0xFF1F0A14), Color(0xFF9A4056)),
+              ThemeColors("Crimson", Color(0xFF1A0508), Color(0xFF8A1F2E)),
+              ThemeColors("Purple", Color(0xFF0E0620), Color(0xFF6A43B0)),
+              ThemeColors("Graphite", Color(0xFF09090B), Color(0xFF3F454F)),
+              ThemeColors("NEXUS", Color(0xFF05080F), Color(0xFF0B1B33))
+          )
+          val TOP_W = listOf(130, 150, 170)
+
+          val DEFAULTS = mapOf(
+              "theme" to 0, "bg" to 0, "corner" to 1, "focus" to 0, "anim" to 1,
+              "topMode" to 0, "topSize" to 1, "dockCount" to 2, "barPos" to 0,
+              "showWeather" to 0, "unit" to 0, "showWifi" to 0, "showSettings" to 0,
+              "showClock" to 0, "hour24" to 0
+          )
+
+          val OPT_BG = Opt("bg", "Background", listOf("Gradient", "Flat", "Dark"))
+          val OPT_CORNER = Opt("corner", "Tile corners", listOf("Sharp", "Rounded", "Round"))
+          val OPT_FOCUS = Opt("focus", "Highlight colour", listOf("White", "Gold", "Cyan", "None"))
+          val OPT_ANIM = Opt("anim", "Animation", listOf("Off", "Snappy", "Smooth"))
+          val OPT_TOPMODE = Opt("topMode", "Continue watching row", listOf("Show", "Hide"))
+          val OPT_TOPSIZE = Opt("topSize", "Card size", listOf("Small", "Medium", "Large"))
+          val OPT_DOCK = Opt("dockCount", "Apps on home", listOf("3", "4", "5"))
+          val OPT_BARPOS = Opt("barPos", "Tab position", listOf("Next to logo", "Centred"))
+          val OPT_WEATHER = Opt("showWeather", "Weather", listOf("Show", "Hide"))
+          val OPT_UNIT = Opt("unit", "Temperature", listOf("Celsius", "Fahrenheit"))
+          val OPT_WIFI = Opt("showWifi", "Wi-Fi icon", listOf("Show", "Hide"))
+          val OPT_SETBTN = Opt("showSettings", "System settings icon", listOf("Show", "Hide"))
+          val OPT_CLOCK = Opt("showClock", "Clock", listOf("Show", "Hide"))
+          val OPT_H24 = Opt("hour24", "Clock format", listOf("12-hour", "24-hour"))
+
+          val APP_CACHE = ConcurrentHashMap<String, AppItem>()
+          val IMG_CACHE = ConcurrentHashMap<String, ImageBitmap>()
+
+          var watchStatus by mutableStateOf("checking")
+
+          val LocalStyle = compositionLocalOf { UiStyle(18.dp, Color.White, 1.08f, 110) }
+
+          fun styleOf(p: LauncherPrefs): UiStyle {
+              val corner = when (p.num("corner")) {
+                  0 -> 6.dp
+                  2 -> 30.dp
+                  else -> 18.dp
+              }
+              var hl: Color? = when (p.num("focus")) {
+                  1 -> Color(0xFFFFC107)
+                  2 -> Color(0xFF4DD0E1)
+                  3 -> null
+                  else -> Color.White
+              }
+              val scale = when (p.num("anim")) {
+                  0 -> 1f
+                  2 -> 1.12f
+                  else -> 1.08f
+              }
+              val ms = when (p.num("anim")) {
+                  0 -> 0
+                  2 -> 220
+                  else -> 110
+              }
+              if (hl == null && scale == 1f) hl = Color.White
+              return UiStyle(corner, hl, scale, ms)
+          }
+
+          fun themeOf(p: LauncherPrefs): ThemeColors = THEMES[p.num("theme").coerceIn(0, THEMES.size - 1)]
+
+          fun bgBrush(p: LauncherPrefs): Brush {
+              val t = themeOf(p)
+              return when (p.num("bg")) {
+                  1 -> SolidColor(t.mid)
+                  2 -> SolidColor(t.edge)
+                  else -> Brush.verticalGradient(0f to t.edge, 0.36f to t.mid, 0.60f to t.mid, 1f to t.edge)
+              }
+          }
+
+          fun themeBrush(t: ThemeColors): Brush = Brush.verticalGradient(
+              0f to t.edge,
+              0.36f to t.mid,
+              0.60f to t.mid,
+              1f to t.edge
+          )
+
+          class LauncherPrefs(ctx: Context) {
+              private val sp = ctx.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+              private val ints = mutableStateMapOf<String, Int>()
+
+              init {
+                  for ((k, d) in DEFAULTS) {
+                      ints[k] = sp.getInt("i_" + k, d)
+                  }
+              }
+
+              private fun readList(k: String): List<String> =
+                  sp.getString(k, "").orEmpty().split(",").filter { it.isNotBlank() }
+
+              var town by mutableStateOf(sp.getString("town", "").orEmpty())
+                  private set
+              var order by mutableStateOf(readList("order"))
+                  private set
+              var hidden by mutableStateOf(readList("hidden").toSet())
+                  private set
+
+              fun num(k: String): Int = ints[k] ?: (DEFAULTS[k] ?: 0)
+
+              fun setNum(k: String, v: Int) {
+                  ints[k] = v
+                  sp.edit().putInt("i_" + k, v).apply()
+              }
+
+              fun updateTown(v: String) {
+                  town = v
+                  sp.edit().putString("town", v).apply()
+              }
+
+              fun updateOrder(v: List<String>) {
+                  order = v
+                  sp.edit().putString("order", v.joinToString(",")).apply()
+              }
+
+              fun updateHidden(v: Set<String>) {
+                  hidden = v
+                  sp.edit().putString("hidden", v.joinToString(",")).apply()
+              }
+          }
+
+          // ---------- activity ----------
+
+          class MainActivity : ComponentActivity() {
+              private val refresh = mutableIntStateOf(0)
+              private val screen = mutableStateOf(0)
+              private val showSplash = mutableStateOf(true)
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  installSplashScreen()
+                  super.onCreate(savedInstanceState)
+                  onBackPressedDispatcher.addCallback(this) {
+                      if (screen.value != 0) screen.value = 0
+                  }
+                  setContent {
+                      Box(Modifier.fillMaxSize()) {
+                          LauncherScreen(refresh.intValue, screen)
+                          if (showSplash.value) {
+                              NexusSplash { showSplash.value = false }
+                          }
+                      }
+                  }
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  screen.value = 0
+                  refresh.intValue = refresh.intValue + 1
+              }
+          }
+
+          // ---------- loading ----------
+
+          fun loadApps(ctx: Context): List<AppItem> {
+              val pm = ctx.packageManager
+              val leanback = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+              val normal = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+              val found = (pm.queryIntentActivities(leanback, 0) + pm.queryIntentActivities(normal, 0))
+                  .filter { it.activityInfo.packageName != ctx.packageName }
+                  .filter { it.activityInfo.packageName !in STOCK_LAUNCHERS }
+                  .distinctBy { it.activityInfo.packageName }
+              return found.map { ri ->
+                  val ai = ri.activityInfo
+                  val comp = ComponentName(ai.packageName, ai.name)
+                  APP_CACHE.getOrPut(comp.flattenToString()) {
+                      val banner = ai.loadBanner(pm)
+                      val bmp = if (banner != null) banner.toBitmap(320, 180) else ai.loadIcon(pm).toBitmap(128, 128)
+                      AppItem(ri.loadLabel(pm).toString(), comp, bmp.asImageBitmap(), banner != null)
+                  }
+              }.sortedBy { it.label.lowercase() }
+          }
+
+          fun recentPackages(ctx: Context): List<String> =
+              ctx.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+                  .getString("recent", "").orEmpty().split(",").filter { it.isNotBlank() }
+
+          fun pushRecent(ctx: Context, pkg: String) {
+              val list = (listOf(pkg) + recentPackages(ctx).filter { it != pkg }).take(8)
+              ctx.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+                  .edit().putString("recent", list.joinToString(",")).apply()
+          }
+
+          fun launchApp(ctx: Context, app: AppItem) {
+              pushRecent(ctx, app.component.packageName)
+              runCatching {
+                  ctx.startActivity(
+                      Intent(Intent.ACTION_MAIN).setComponent(app.component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  )
+              }
+          }
+
+          fun openSystem(ctx: Context, action: String) {
+              runCatching {
+                  ctx.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+              }
+          }
+
+          fun isOnline(ctx: Context): Boolean = try {
+              val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+              val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+              caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+          } catch (e: Exception) {
+              true
+          }
+
+          fun httpGet(u: String): String {
+              val c = URL(u).openConnection() as HttpURLConnection
+              c.connectTimeout = 8000
+              c.readTimeout = 8000
+              return try {
+                  c.inputStream.bufferedReader().readText()
+              } finally {
+                  c.disconnect()
+              }
+          }
+
+          suspend fun fetchTemp(town: String, fahrenheit: Boolean): String? = withContext(Dispatchers.IO) {
+              try {
+                  val g = httpGet("https://geocoding-api.open-meteo.com/v1/search?count=1&name=" + URLEncoder.encode(town, "UTF-8"))
+                  val results = JSONObject(g).optJSONArray("results") ?: return@withContext null
+                  val o = results.getJSONObject(0)
+                  val lat = o.getDouble("latitude")
+                  val lon = o.getDouble("longitude")
+                  val unit = if (fahrenheit) "&temperature_unit=fahrenheit" else ""
+                  val w = httpGet("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m" + unit)
+                  val t = JSONObject(w).getJSONObject("current").getDouble("temperature_2m")
+                  Math.round(t).toInt().toString() + "\u00B0"
+              } catch (e: Exception) {
+                  null
+              }
+          }
+
+          fun loadBitmap(ctx: Context, uriStr: String?): ImageBitmap? {
+              if (uriStr.isNullOrBlank()) return null
+              IMG_CACHE[uriStr]?.let { return it }
+              return try {
+                  val u = Uri.parse(uriStr)
+                  val stream = if (u.scheme == "http" || u.scheme == "https") {
+                      URL(uriStr).openStream()
+                  } else {
+                      ctx.contentResolver.openInputStream(u)
+                  }
+                  val bytes = stream?.use { it.readBytes() } ?: return null
+                  val o = BitmapFactory.Options()
+                  o.inJustDecodeBounds = true
+                  BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+                  var sample = 1
+                  while (o.outWidth / sample > 900) sample *= 2
+                  val o2 = BitmapFactory.Options()
+                  o2.inSampleSize = sample
+                  val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o2)?.asImageBitmap()
+                  if (bmp != null) {
+                      if (IMG_CACHE.size > 30) IMG_CACHE.clear()
+                      IMG_CACHE[uriStr] = bmp
+                  }
+                  bmp
+              } catch (e: Exception) {
+                  null
+              }
+          }
+
+          fun loadWatchNext(ctx: Context): WatchResult {
+              try {
+                  val cur = ctx.contentResolver.query(
+                      Uri.parse("content://android.media.tv/watch_next_program"),
+                      null, null, null, "last_engagement_time_utc_millis DESC"
+                  ) ?: return WatchResult(emptyList(), "no data returned")
+                  val out = ArrayList<WatchItem>()
+                  var rows = 0
+                  cur.use { c ->
+                      val iTitle = c.getColumnIndex("title")
+                      val iPoster = c.getColumnIndex("poster_art_uri")
+                      val iThumb = c.getColumnIndex("thumbnail_uri")
+                      val iIntent = c.getColumnIndex("intent_uri")
+                      val iPos = c.getColumnIndex("last_playback_position_millis")
+                      val iDur = c.getColumnIndex("duration_millis")
+                      val iType = c.getColumnIndex("watch_next_type")
+                      val iPkg = c.getColumnIndex("package_name")
+                      val iSeason = c.getColumnIndex("season_display_number")
+                      val iEp = c.getColumnIndex("episode_display_number")
+                      while (c.moveToNext() && out.size < 8) {
+                          rows++
+                          val type = if (iType >= 0) c.getInt(iType) else 0
+                          if (type > 1) continue
+                          val intentUri: String? = if (iIntent >= 0) c.getString(iIntent) else null
+                          if (intentUri.isNullOrBlank()) continue
+                          val title = if (iTitle >= 0) c.getString(iTitle).orEmpty() else ""
+                          val posterA: String? = if (iPoster >= 0) c.getString(iPoster) else null
+                          val posterB: String? = if (iThumb >= 0) c.getString(iThumb) else null
+                          val pos = if (iPos >= 0) c.getLong(iPos) else 0L
+                          val dur = if (iDur >= 0) c.getLong(iDur) else 0L
+                          val prog = if (dur > 0) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+                          val pkg: String? = if (iPkg >= 0) c.getString(iPkg) else null
+                          val season: String = if (iSeason >= 0) c.getString(iSeason).orEmpty() else ""
+                          val episode: String = if (iEp >= 0) c.getString(iEp).orEmpty() else ""
+                          val parts = ArrayList<String>()
+                          if (season.isNotBlank() && episode.isNotBlank()) {
+                              parts.add("S" + season + " E" + episode)
+                          } else if (episode.isNotBlank()) {
+                              parts.add("Episode " + episode)
+                          }
+                          if (dur > 0 && pos > 0 && dur > pos) {
+                              parts.add(((dur - pos) / 60000L).toString() + " min remaining")
+                          }
+                          var badge: ImageBitmap? = null
+                          if (pkg != null) {
+                              badge = IMG_CACHE["badge:" + pkg]
+                              if (badge == null) {
+                                  badge = try {
+                                      ctx.packageManager.getApplicationIcon(pkg).toBitmap(96, 96).asImageBitmap()
+                                  } catch (e: Exception) {
+                                      null
+                                  }
+                                  if (badge != null) IMG_CACHE["badge:" + pkg] = badge
+                              }
+                          }
+                          out.add(WatchItem(title, intentUri, loadBitmap(ctx, posterA ?: posterB), badge, prog, parts.joinToString("  \u00B7  ")))
+                      }
+                  }
+                  val status = if (out.isNotEmpty()) {
+                      "OK, " + out.size + " items"
+                  } else {
+                      "allowed but nothing to show (" + rows + " rows)"
+                  }
+                  return WatchResult(out, status)
+              } catch (e: Exception) {
+                  return WatchResult(emptyList(), "not available: " + (e.message ?: e.javaClass.simpleName))
+              }
+          }
+
+          fun openWatch(ctx: Context, w: WatchItem) {
+              runCatching {
+                  ctx.startActivity(
+                      Intent.parseUri(w.intentUri, Intent.URI_INTENT_SCHEME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  )
+              }
+          }
+
+          fun moveInList(ordered: List<AppItem>, pkg: String, delta: Int): List<String> {
+              val l = ordered.map { it.component.packageName }.toMutableList()
+              val i = l.indexOf(pkg)
+              if (i < 0) return l
+              val j = (i + delta).coerceIn(0, l.size - 1)
+              l.removeAt(i)
+              l.add(j, pkg)
+              return l
+          }
+
+          fun frontInList(ordered: List<AppItem>, pkg: String): List<String> {
+              val l = ordered.map { it.component.packageName }.toMutableList()
+              l.remove(pkg)
+              l.add(0, pkg)
+              return l
+          }
+
+          fun swapInList(ordered: List<AppItem>, a: String, b: String): List<String> {
+              val l = ordered.map { it.component.packageName }.toMutableList()
+              val i = l.indexOf(a)
+              val j = l.indexOf(b)
+              if (i < 0 || j < 0) return l
+              l[i] = b
+              l[j] = a
+              return l
+          }
+
+          // ---------- root ----------
+
+          @Composable
+          fun LauncherScreen(refresh: Int, screen: MutableState<Int>) {
+              val ctx = LocalContext.current
+              val prefs = remember { LauncherPrefs(ctx) }
+              var reload by remember { mutableIntStateOf(0) }
+              val apps by produceState(emptyList<AppItem>(), refresh, reload) {
+                  value = withContext(Dispatchers.Default) { loadApps(ctx) }
+              }
+              val ordered = remember(apps, prefs.order) {
+                  val idx = prefs.order.withIndex().associate { it.value to it.index }
+                  apps.sortedWith(
+                      compareBy<AppItem>(
+                          { idx[it.component.packageName] ?: Int.MAX_VALUE },
+                          { it.label.lowercase() }
+                      )
+                  )
+              }
+              val style = remember(prefs.num("corner"), prefs.num("focus"), prefs.num("anim")) { styleOf(prefs) }
+              CompositionLocalProvider(LocalStyle provides style) {
+                  when (screen.value) {
+                      1 -> AllAppsScreen(prefs, ordered)
+                      2 -> SettingsScreen(
+                          prefs,
+                          ordered,
+                          onDone = { screen.value = 0 },
+                          onRefreshApps = {
+                              APP_CACHE.clear()
+                              reload = reload + 1
+                          }
+                      )
+                      else -> HomeScreen(prefs, ordered, refresh, screen)
+                  }
+              }
+          }
+
+          // ---------- home ----------
+
+          @Composable
+          fun HomeScreen(prefs: LauncherPrefs, ordered: List<AppItem>, refresh: Int, screen: MutableState<Int>) {
+              val ctx = LocalContext.current
+              val st = LocalStyle.current
+              val th = themeOf(prefs)
+              val visible = ordered.filter { it.component.packageName !in prefs.hidden }
+              val dockN = 3 + prefs.num("dockCount").coerceIn(0, 2)
+              val dockApps = visible.take(dockN)
+              val topMode = prefs.num("topMode")
+              val cw = TOP_W[prefs.num("topSize").coerceIn(0, 2)]
+
+              val watch by produceState(WatchResult(emptyList(), ""), refresh, topMode) {
+                  if (topMode == 0) {
+                      while (true) {
+                          val r = withContext(Dispatchers.IO) { loadWatchNext(ctx) }
+                          watchStatus = r.status
+                          value = r
+                          delay(120000L)
+                      }
+                  } else {
+                      value = WatchResult(emptyList(), "off")
+                  }
+              }
+
+              var moving by remember { mutableStateOf<String?>(null) }
+              val firstDock = remember { FocusRequester() }
+              val moveReq = remember { FocusRequester() }
+              val heroIdx = remember { mutableIntStateOf(0) }
+              LaunchedEffect(dockApps.size) {
+                  if (dockApps.isNotEmpty()) {
+                      delay(150)
+                      runCatching { firstDock.requestFocus() }
+                  }
+              }
+              LaunchedEffect(prefs.order, moving) {
+                  if (moving != null) {
+                      delay(40)
+                      runCatching { moveReq.requestFocus() }
+                  }
+              }
+
+              val showWatch = topMode == 0 && watch.items.isNotEmpty()
+
+              Box(Modifier.fillMaxSize().background(bgBrush(prefs))) {
+                  HeroBackdrop(watch.items, showWatch, heroIdx, th)
+                  Column(
+                      Modifier
+                          .fillMaxSize()
+                          .padding(horizontal = 36.dp, vertical = 16.dp)
+                          .onPreviewKeyEvent { ev ->
+                              val m = moving
+                              val k = ev.nativeKeyEvent
+                              val code = k.keyCode
+                              val isSel = code == AKeyEvent.KEYCODE_DPAD_CENTER ||
+                                  code == AKeyEvent.KEYCODE_ENTER ||
+                                  code == AKeyEvent.KEYCODE_NUMPAD_ENTER
+                              val isLR = code == AKeyEvent.KEYCODE_DPAD_LEFT || code == AKeyEvent.KEYCODE_DPAD_RIGHT
+                              if (m == null) {
+                                  false
+                              } else if (k.action == AKeyEvent.ACTION_UP) {
+                                  isSel || isLR
+                              } else if (isLR) {
+                                  val i = dockApps.indexOfFirst { it.component.packageName == m }
+                                  val j = if (code == AKeyEvent.KEYCODE_DPAD_LEFT) i - 1 else i + 1
+                                  if (i >= 0 && j in dockApps.indices) {
+                                      prefs.updateOrder(swapInList(ordered, m, dockApps[j].component.packageName))
+                                  }
+                                  true
+                              } else if (isSel) {
+                                  if (k.repeatCount == 0) moving = null
+                                  true
+                              } else if (code == AKeyEvent.KEYCODE_BACK) {
+                                  moving = null
+                                  true
+                              } else {
+                                  moving = null
+                                  false
+                              }
+                          }
+                  ) {
+                      NavBar(prefs, screen)
+                      Box(
+                          Modifier.weight(1f).fillMaxWidth().padding(start = 4.dp, bottom = 12.dp),
+                          contentAlignment = Alignment.BottomStart
+                      ) {
+                          HeroSection(watch.items, showWatch, heroIdx) { openWatch(ctx, it) }
+                      }
+                      Text(
+                          if (moving != null) "Moving: use the left and right buttons, then press OK to drop" else "Your Apps",
+                          color = if (moving != null) Color(0xFFFFC107) else Color.White,
+                          fontSize = 15.sp,
+                          fontWeight = FontWeight.SemiBold,
+                          modifier = Modifier.padding(start = 4.dp)
+                      )
+                      Row(
+                          Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 4.dp),
+                          horizontalArrangement = Arrangement.spacedBy(12.dp)
+                      ) {
+                          dockApps.forEachIndexed { i, app ->
+                              val pkg = app.component.packageName
+                              key(pkg) {
+                                  FocusScale(
+                                      modifier = Modifier.width(118.dp).aspectRatio(16f / 9f),
+                                      bg = Color(0xFFF3F6F8),
+                                      focusRequester = if (moving == pkg) moveReq else if (i == 0) firstDock else null,
+                                      highlighted = moving == pkg,
+                                      onLongClick = { moving = pkg },
+                                      onClick = { if (moving == null) launchApp(ctx, app) }
+                                  ) { AppFace(app, Color(0xFF16232C)) }
+                              }
+                          }
+                          FocusScale(
+                              modifier = Modifier.width(118.dp).aspectRatio(16f / 9f),
+                              bg = Color(0x33FFFFFF),
+                              onClick = { screen.value = 1 }
+                          ) { AllAppsFace() }
+                      }
+                      if (showWatch) {
+                          Text(
+                              "Continue Watching",
+                              color = Color.White,
+                              fontSize = 15.sp,
+                              fontWeight = FontWeight.SemiBold,
+                              modifier = Modifier.padding(start = 4.dp)
+                          )
+                          LazyRow(
+                              horizontalArrangement = Arrangement.spacedBy(14.dp),
+                              contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
+                          ) {
+                              itemsIndexed(watch.items) { i, w ->
+                                  Column(Modifier.width(cw.dp)) {
+                                      FocusScale(
+                                          modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                                          bg = Color(0xFF0E2E40),
+                                          onFocus = { heroIdx.intValue = i },
+                                          onClick = { openWatch(ctx, w) }
+                                      ) {
+                                          if (w.poster != null) {
+                                              Image(
+                                                  bitmap = w.poster,
+                                                  contentDescription = w.title,
+                                                  contentScale = ContentScale.Crop,
+                                                  modifier = Modifier.fillMaxSize()
+                                              )
+                                          } else {
+                                              Text(
+                                                  w.title,
+                                                  color = Color.White,
+                                                  fontSize = 14.sp,
+                                                  fontWeight = FontWeight.Bold,
+                                                  modifier = Modifier.align(Alignment.Center)
+                                              )
+                                          }
+                                          Box(
+                                              Modifier
+                                                  .align(Alignment.BottomStart)
+                                                  .padding(horizontal = 8.dp, vertical = 6.dp)
+                                                  .fillMaxWidth()
+                                                  .height(3.dp)
+                                                  .background(Color(0x66FFFFFF))
+                                          ) {
+                                              Box(Modifier.fillMaxWidth(w.progress).fillMaxHeight().background(Color(0xFF00D1FF)))
+                                          }
+                                          if (w.badge != null) {
+                                              Image(
+                                                  bitmap = w.badge,
+                                                  contentDescription = null,
+                                                  modifier = Modifier
+                                                      .align(Alignment.TopEnd)
+                                                      .padding(6.dp)
+                                                      .size(20.dp)
+                                                      .clip(RoundedCornerShape(5.dp))
+                                              )
+                                          }
+                                      }
+                                      Spacer(Modifier.height(6.dp))
+                                      Text(
+                                          w.title,
+                                          color = Color.White,
+                                          fontSize = 13.sp,
+                                          fontWeight = FontWeight.SemiBold,
+                                          maxLines = 1,
+                                          overflow = TextOverflow.Ellipsis,
+                                          modifier = Modifier.fillMaxWidth()
+                                      )
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun HeroBackdrop(items: List<WatchItem>, show: Boolean, idx: MutableIntState, th: ThemeColors) {
+              val poster = if (show && items.isNotEmpty()) items[idx.intValue.coerceIn(0, items.size - 1)].poster else null
+              if (poster != null) {
+                  Box(Modifier.fillMaxSize()) {
+                      Image(
+                          bitmap = poster,
+                          contentDescription = null,
+                          contentScale = ContentScale.Crop,
+                          alpha = 0.6f,
+                          modifier = Modifier.fillMaxSize()
+                      )
+                      Box(
+                          Modifier.fillMaxSize().background(
+                              Brush.horizontalGradient(
+                                  0f to th.edge,
+                                  0.5f to th.edge.copy(alpha = 0.6f),
+                                  1f to Color.Transparent
+                              )
+                          )
+                      )
+                      Box(
+                          Modifier.fillMaxSize().background(
+                              Brush.verticalGradient(0.45f to Color.Transparent, 1f to th.edge)
+                          )
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun HeroSection(items: List<WatchItem>, show: Boolean, idx: MutableIntState, onOpen: (WatchItem) -> Unit) {
+              val hero: WatchItem? = if (show && items.isNotEmpty()) items[idx.intValue.coerceIn(0, items.size - 1)] else null
+              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  if (hero != null) {
+                      Text(
+                          "CONTINUE WATCHING",
+                          color = Color(0xFF00D1FF),
+                          fontSize = 13.sp,
+                          fontWeight = FontWeight.Bold,
+                          letterSpacing = 3.sp
+                      )
+                      Text(
+                          hero.title,
+                          color = Color.White,
+                          fontSize = 36.sp,
+                          fontWeight = FontWeight.Bold,
+                          maxLines = 2,
+                          overflow = TextOverflow.Ellipsis,
+                          modifier = Modifier.fillMaxWidth(0.6f)
+                      )
+                      Box(
+                          Modifier
+                              .width(300.dp)
+                              .height(4.dp)
+                              .clip(RoundedCornerShape(2.dp))
+                              .background(Color(0x33FFFFFF))
+                      ) {
+                          Box(
+                              Modifier
+                                  .fillMaxHeight()
+                                  .fillMaxWidth(hero.progress)
+                                  .background(Brush.horizontalGradient(listOf(Color(0xFF00D1FF), Color(0xFF007BFF))))
+                          )
+                      }
+                      if (hero.info.isNotBlank()) {
+                          Text(hero.info, color = Color(0xFFB8C7DB), fontSize = 14.sp)
+                      }
+                      Chip("Resume", true) { onOpen(hero) }
+                  } else {
+                      Text("Welcome to NEXUS", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                      Text(
+                          "YOUR TV. YOUR WAY.",
+                          color = Color(0xFF7FA3C8),
+                          fontSize = 14.sp,
+                          letterSpacing = 6.sp
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun NavBar(prefs: LauncherPrefs, screen: MutableState<Int>) {
+              val ctx = LocalContext.current
+              val fahrenheit = prefs.num("unit") == 1
+              val showW = prefs.num("showWeather") == 0
+              val temp by produceState<String?>(null, prefs.town, fahrenheit, showW) {
+                  if (!showW || prefs.town.isBlank()) {
+                      value = null
+                  } else {
+                      while (true) {
+                          value = fetchTemp(prefs.town, fahrenheit)
+                          delay(1800000L)
+                      }
+                  }
+              }
+              val online by produceState(true) {
+                  while (true) {
+                      value = isOnline(ctx)
+                      delay(15000L)
+                  }
+              }
+              val tabsLeft = prefs.num("barPos") == 0
+              Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                  Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(10.dp)
+                  ) {
+                      Canvas(Modifier.size(28.dp)) {
+                          drawNexusN(size.width / 2f, size.height / 2f, size.width * 0.85f)
+                      }
+                      Text(
+                          "NEXUS",
+                          color = Color(0xFFE6F0FF),
+                          fontSize = 16.sp,
+                          fontWeight = FontWeight.Medium,
+                          letterSpacing = 5.sp
+                      )
+                  }
+                  if (tabsLeft) {
+                      Spacer(Modifier.width(28.dp))
+                      NavTabs(screen)
+                      Spacer(Modifier.weight(1f))
+                  } else {
+                      Spacer(Modifier.weight(1f))
+                      NavTabs(screen)
+                      Spacer(Modifier.weight(1f))
+                  }
+                  Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(14.dp)
+                  ) {
+                      if (showW) {
+                          temp?.let { Text(it, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
+                      }
+                      if (prefs.num("showWifi") == 0) {
+                          IconBtn(0, !online) { openSystem(ctx, Settings.ACTION_WIFI_SETTINGS) }
+                      }
+                      if (prefs.num("showSettings") == 0) {
+                          IconBtn(1) { openSystem(ctx, Settings.ACTION_SETTINGS) }
+                      }
+                      if (prefs.num("showClock") == 0) {
+                          Clock(prefs.num("hour24") == 1)
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun NavTabs(screen: MutableState<Int>) {
+              Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(6.dp)
+              ) {
+                  NavTab("Home", true) { }
+                  NavTab("Apps", false) { screen.value = 1 }
+                  NavTab("Settings", false) { screen.value = 2 }
+              }
+          }
+
+          @Composable
+          fun NavTab(text: String, selected: Boolean, onClick: () -> Unit) {
+              FocusScale(
+                  modifier = Modifier.height(36.dp),
+                  bg = if (selected) Color(0x6600AAFF) else Color.Transparent,
+                  onClick = onClick
+              ) {
+                  Text(
+                      text,
+                      color = if (selected) Color.White else Color(0xCCFFFFFF),
+                      fontSize = 15.sp,
+                      fontWeight = FontWeight.SemiBold,
+                      maxLines = 1,
+                      modifier = Modifier.padding(horizontal = 16.dp).align(Alignment.Center)
+                  )
+              }
+          }
+
+          // ---------- all apps ----------
+
+          @Composable
+          fun AllAppsScreen(prefs: LauncherPrefs, ordered: List<AppItem>) {
+              val ctx = LocalContext.current
+              val visible = ordered.filter { it.component.packageName !in prefs.hidden }
+              Column(
+                  Modifier
+                      .fillMaxSize()
+                      .background(bgBrush(prefs))
+                      .padding(horizontal = 40.dp, vertical = 20.dp)
+              ) {
+                  Row(
+                      Modifier.fillMaxWidth(),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.SpaceBetween
+                  ) {
+                      Text("All apps", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                      Text(
+                          "Hold OK on an app to pin it to the front of your home screen",
+                          color = Color(0xCCFFFFFF),
+                          fontSize = 14.sp
+                      )
+                  }
+                  Spacer(Modifier.height(10.dp))
+                  LazyVerticalGrid(
+                      columns = GridCells.Fixed(5),
+                      horizontalArrangement = Arrangement.spacedBy(14.dp),
+                      verticalArrangement = Arrangement.spacedBy(14.dp),
+                      contentPadding = PaddingValues(10.dp)
+                  ) {
+                      gridItems(visible, key = { it.component.packageName }) { app ->
+                          FocusScale(
+                              modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                              bg = Color(0xFFF3F6F8),
+                              onLongClick = {
+                                  prefs.updateOrder(frontInList(ordered, app.component.packageName))
+                                  Toast.makeText(ctx, app.label + " pinned to home", Toast.LENGTH_SHORT).show()
+                              },
+                              onClick = { launchApp(ctx, app) }
+                          ) { AppFace(app, Color(0xFF16232C)) }
+                      }
+                  }
+              }
+          }
+
+          // ---------- settings ----------
+
+          val SECTIONS = listOf("Appearance", "Home screen", "Top bar", "Apps")
+
+          @Composable
+          fun SettingsScreen(
+              prefs: LauncherPrefs,
+              ordered: List<AppItem>,
+              onDone: () -> Unit,
+              onRefreshApps: () -> Unit
+          ) {
+              var section by remember { mutableIntStateOf(0) }
+              Row(
+                  Modifier
+                      .fillMaxSize()
+                      .background(bgBrush(prefs))
+                      .padding(horizontal = 40.dp, vertical = 22.dp),
+                  horizontalArrangement = Arrangement.spacedBy(26.dp)
+              ) {
+                  Column(
+                      Modifier.width(220.dp).fillMaxHeight(),
+                      verticalArrangement = Arrangement.spacedBy(10.dp)
+                  ) {
+                      Text("Settings", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                      Text("Changes apply straight away", color = Color(0xAAFFFFFF), fontSize = 14.sp)
+                      Spacer(Modifier.height(10.dp))
+                      SECTIONS.forEachIndexed { i, n ->
+                          FocusScale(
+                              modifier = Modifier.fillMaxWidth().height(48.dp),
+                              bg = if (section == i) Color(0x66FFFFFF) else Color(0x1AFFFFFF),
+                              onFocus = { section = i },
+                              onClick = { section = i }
+                          ) {
+                              Text(
+                                  n,
+                                  color = Color.White,
+                                  fontSize = 17.sp,
+                                  fontWeight = FontWeight.Bold,
+                                  modifier = Modifier.align(Alignment.CenterStart).padding(start = 18.dp)
+                              )
+                          }
+                      }
+                      Spacer(Modifier.weight(1f))
+                      Chip("Done", true, onDone)
+                  }
+                  Box(
+                      Modifier
+                          .weight(1f)
+                          .fillMaxHeight()
+                          .clip(RoundedCornerShape(26.dp))
+                          .background(Color(0x40000000))
+                          .padding(22.dp)
+                  ) {
+                      when (section) {
+                          0 -> AppearancePanel(prefs)
+                          1 -> HomePanel(prefs)
+                          2 -> BarPanel(prefs)
+                          else -> AppsPanel(prefs, ordered, onRefreshApps)
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun PanelTitle(t: String) {
+              Text(t, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+          }
+
+          @Composable
+          fun SettingLabel(t: String) {
+              Text(t, color = Color(0xDDFFFFFF), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+          }
+
+          @Composable
+          fun OptionRow(prefs: LauncherPrefs, o: Opt) {
+              val cur = prefs.num(o.key)
+              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  SettingLabel(o.title)
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                      o.choices.forEachIndexed { i, c ->
+                          Chip(c, cur == i) { prefs.setNum(o.key, i) }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun AppearancePanel(prefs: LauncherPrefs) {
+              LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                  item { PanelTitle("Appearance") }
+                  item {
+                      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                          SettingLabel("Colour theme")
+                          LazyRow(
+                              horizontalArrangement = Arrangement.spacedBy(14.dp),
+                              contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp)
+                          ) {
+                              itemsIndexed(THEMES) { i, t ->
+                                  FocusScale(
+                                      modifier = Modifier.width(112.dp).height(68.dp),
+                                      bg = Color.Transparent,
+                                      onClick = { prefs.setNum("theme", i) }
+                                  ) {
+                                      Box(Modifier.fillMaxSize().background(themeBrush(t)))
+                                      Text(
+                                          t.name,
+                                          color = Color.White,
+                                          fontSize = 14.sp,
+                                          fontWeight = FontWeight.Bold,
+                                          modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+                                      )
+                                      if (prefs.num("theme") == i) {
+                                          Box(
+                                              Modifier
+                                                  .align(Alignment.TopEnd)
+                                                  .padding(8.dp)
+                                                  .size(14.dp)
+                                                  .clip(CircleShape)
+                                                  .background(Color.White)
+                                          )
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+                  item { OptionRow(prefs, OPT_BG) }
+                  item { OptionRow(prefs, OPT_CORNER) }
+                  item { OptionRow(prefs, OPT_FOCUS) }
+                  item { OptionRow(prefs, OPT_ANIM) }
+              }
+          }
+
+          @Composable
+          fun HomePanel(prefs: LauncherPrefs) {
+              LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                  item { PanelTitle("Home screen") }
+                  item { OptionRow(prefs, OPT_TOPMODE) }
+                  item { OptionRow(prefs, OPT_TOPSIZE) }
+                  item { OptionRow(prefs, OPT_DOCK) }
+                  item {
+                      Text(
+                          "Continue watching: " + watchStatus + ". Hold OK on an app on the home screen to move it.",
+                          color = Color(0xAAFFFFFF),
+                          fontSize = 14.sp
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun BarPanel(prefs: LauncherPrefs) {
+              LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                  item { PanelTitle("Top bar") }
+                  item { OptionRow(prefs, OPT_BARPOS) }
+                  item { OptionRow(prefs, OPT_WEATHER) }
+                  item { TownSetting(prefs) }
+                  item { OptionRow(prefs, OPT_UNIT) }
+                  item { OptionRow(prefs, OPT_WIFI) }
+                  item { OptionRow(prefs, OPT_SETBTN) }
+                  item { OptionRow(prefs, OPT_CLOCK) }
+                  item { OptionRow(prefs, OPT_H24) }
+                  item {
+                      Text(
+                          "The Settings tab always stays on the home screen so you can get back here.",
+                          color = Color(0xAAFFFFFF),
+                          fontSize = 14.sp
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun AppsPanel(prefs: LauncherPrefs, ordered: List<AppItem>, onRefreshApps: () -> Unit) {
+              LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  item { PanelTitle("Apps") }
+                  item {
+                      Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                          Chip("Refresh app icons") { onRefreshApps() }
+                      }
+                  }
+                  item { SettingLabel("Reorder, send to front, or hide apps") }
+                  items(ordered, key = { it.component.packageName }) { app ->
+                      val pkg = app.component.packageName
+                      val isHidden = pkg in prefs.hidden
+                      Row(
+                          Modifier.fillMaxWidth(),
+                          verticalAlignment = Alignment.CenterVertically,
+                          horizontalArrangement = Arrangement.spacedBy(8.dp)
+                      ) {
+                          Text(
+                              app.label + if (isHidden) " (hidden)" else "",
+                              color = if (isHidden) Color(0x99FFFFFF) else Color.White,
+                              fontSize = 16.sp,
+                              maxLines = 1,
+                              overflow = TextOverflow.Ellipsis,
+                              modifier = Modifier.width(170.dp)
+                          )
+                          Chip("Up") { prefs.updateOrder(moveInList(ordered, pkg, -1)) }
+                          Chip("Down") { prefs.updateOrder(moveInList(ordered, pkg, 1)) }
+                          Chip("Front") { prefs.updateOrder(frontInList(ordered, pkg)) }
+                          Chip(if (isHidden) "Show" else "Hide") {
+                              prefs.updateHidden(if (isHidden) prefs.hidden - pkg else prefs.hidden + pkg)
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun TownSetting(prefs: LauncherPrefs) {
+              var editing by remember { mutableStateOf(false) }
+              var text by remember { mutableStateOf(prefs.town) }
+              val fr = remember { FocusRequester() }
+              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  SettingLabel("Weather town")
+                  if (!editing) {
+                      Chip(
+                          if (prefs.town.isBlank()) "Not set - select to enter" else prefs.town + "  (select to change)"
+                      ) {
+                          text = prefs.town
+                          editing = true
+                      }
+                  } else {
+                      Row(
+                          verticalAlignment = Alignment.CenterVertically,
+                          horizontalArrangement = Arrangement.spacedBy(10.dp)
+                      ) {
+                          Box(
+                              Modifier
+                                  .width(280.dp)
+                                  .height(44.dp)
+                                  .clip(RoundedCornerShape(12.dp))
+                                  .background(Color(0x33FFFFFF))
+                                  .padding(horizontal = 14.dp),
+                              contentAlignment = Alignment.CenterStart
+                          ) {
+                              BasicTextField(
+                                  value = text,
+                                  onValueChange = { text = it },
+                                  singleLine = true,
+                                  textStyle = TextStyle(color = Color.White, fontSize = 18.sp),
+                                  cursorBrush = SolidColor(Color.White),
+                                  keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                  keyboardActions = KeyboardActions(onDone = {
+                                      prefs.updateTown(text.trim())
+                                      editing = false
+                                  }),
+                                  modifier = Modifier.focusRequester(fr)
+                              )
+                          }
+                          Chip("Save") {
+                              prefs.updateTown(text.trim())
+                              editing = false
+                          }
+                          Chip("Cancel") { editing = false }
+                      }
+                      LaunchedEffect(Unit) {
+                          delay(100)
+                          runCatching { fr.requestFocus() }
+                      }
+                  }
+              }
+          }
+
+          // ---------- shared widgets ----------
+
+          @Composable
+          fun Chip(text: String, selected: Boolean = false, onClick: () -> Unit) {
+              FocusScale(
+                  modifier = Modifier.height(42.dp),
+                  bg = if (selected) Color(0xFFFFFFFF) else Color(0x33FFFFFF),
+                  onClick = onClick
+              ) {
+                  Text(
+                      text,
+                      color = if (selected) Color(0xFF0A2535) else Color.White,
+                      fontSize = 15.sp,
+                      fontWeight = FontWeight.Bold,
+                      maxLines = 1,
+                      modifier = Modifier.padding(horizontal = 16.dp).align(Alignment.Center)
+                  )
+              }
+          }
+
+          @Composable
+          fun IconBtn(kind: Int, dim: Boolean = false, onClick: () -> Unit) {
+              FocusScale(modifier = Modifier.size(46.dp), bg = Color(0x22FFFFFF), onClick = onClick) {
+                  Canvas(Modifier.fillMaxSize().padding(10.dp)) {
+                      drawIcon(kind, if (dim) Color(0x77FFFFFF) else Color.White)
+                  }
+              }
+          }
+
+          fun DrawScope.drawIcon(kind: Int, c: Color) {
+              val w = size.width
+              val h = size.height
+              val sw = w * 0.1f
+              val st = Stroke(width = sw, cap = StrokeCap.Round)
+              when (kind) {
+                  0 -> {
+                      val cx = w / 2
+                      val cy = h * 0.85f
+                      for (r in listOf(w * 0.24f, w * 0.44f, w * 0.64f)) {
+                          drawArc(c, 225f, 90f, false, Offset(cx - r, cy - r), Size(2 * r, 2 * r), style = st)
+                      }
+                      drawCircle(c, sw * 0.9f, Offset(cx, cy))
+                  }
+                  1 -> {
+                      drawCircle(c, w * 0.17f, Offset(w / 2, h / 2), style = st)
+                      drawCircle(
+                          c,
+                          w * 0.36f,
+                          Offset(w / 2, h / 2),
+                          style = Stroke(width = w * 0.16f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(w * 0.14f, w * 0.14f)))
+                      )
+                  }
+                  3 -> {
+                      for (a in 0..2) {
+                          for (b in 0..2) {
+                              drawCircle(c, w * 0.09f, Offset(w * (0.2f + 0.3f * a), h * (0.2f + 0.3f * b)))
+                          }
+                      }
+                  }
+                  else -> {
+                      val ys = listOf(0.25f, 0.5f, 0.75f)
+                      val xs = listOf(0.3f, 0.7f, 0.45f)
+                      for (k in 0..2) {
+                          val y = h * ys[k]
+                          drawLine(c, Offset(0.05f * w, y), Offset(0.95f * w, y), strokeWidth = sw, cap = StrokeCap.Round)
+                          drawCircle(c, sw * 1.3f, Offset(w * xs[k], y))
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun AllAppsFace() {
+              Column(
+                  Modifier.fillMaxSize(),
+                  verticalArrangement = Arrangement.Center,
+                  horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                  Text("+", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Light)
+                  Text("All apps", color = Color(0xCCFFFFFF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+              }
+          }
+
+          @Composable
+          fun AppFace(app: AppItem, textColor: Color) {
+              if (app.isBanner) {
+                  Image(
+                      bitmap = app.image,
+                      contentDescription = app.label,
+                      contentScale = ContentScale.Crop,
+                      modifier = Modifier.fillMaxSize()
+                  )
+              } else {
+                  Column(
+                      Modifier.fillMaxSize(),
+                      verticalArrangement = Arrangement.Center,
+                      horizontalAlignment = Alignment.CenterHorizontally
+                  ) {
+                      Image(bitmap = app.image, contentDescription = null, modifier = Modifier.size(40.dp))
+                      Spacer(Modifier.height(6.dp))
+                      Text(
+                          app.label,
+                          color = textColor,
+                          fontSize = 13.sp,
+                          fontWeight = FontWeight.Bold,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun FocusScale(
+              modifier: Modifier = Modifier,
+              bg: Color,
+              focusRequester: FocusRequester? = null,
+              highlighted: Boolean = false,
+              onFocus: (() -> Unit)? = null,
+              onLongClick: (() -> Unit)? = null,
+              onClick: () -> Unit,
+              content: @Composable BoxScope.() -> Unit
+          ) {
+              val st = LocalStyle.current
+              var focused by remember { mutableStateOf(false) }
+              val target = if (highlighted) st.scale + 0.08f else if (focused) st.scale else 1f
+              val scale by animateFloatAsState(target, tween(st.animMs), label = "scale")
+              val shape = RoundedCornerShape(st.corner)
+              val longDone = remember { BooleanArray(1) }
+              val clickNow by rememberUpdatedState(onClick)
+              val longNow by rememberUpdatedState(onLongClick)
+              val base = if (focusRequester != null) modifier.focusRequester(focusRequester) else modifier
+              val borderMod = if (highlighted) {
+                  Modifier.border(4.dp, Color(0xFFFFC107), shape)
+              } else if (focused && st.highlight != null) {
+                  Modifier.border(4.dp, st.highlight, shape)
+              } else {
+                  Modifier
+              }
+              Box(
+                  base
+                      .zIndex(if (focused || highlighted) 1f else 0f)
+                      .graphicsLayer {
+                          scaleX = scale
+                          scaleY = scale
+                      }
+                      .clip(shape)
+                      .background(bg)
+                      .onKeyEvent { ev ->
+                          val k = ev.nativeKeyEvent
+                          val sel = k.keyCode == AKeyEvent.KEYCODE_DPAD_CENTER ||
+                              k.keyCode == AKeyEvent.KEYCODE_ENTER ||
+                              k.keyCode == AKeyEvent.KEYCODE_NUMPAD_ENTER
+                          if (!sel) {
+                              false
+                          } else if (k.action == AKeyEvent.ACTION_DOWN) {
+                              if (k.repeatCount == 0) {
+                                  longDone[0] = false
+                              } else if (!longDone[0] && onLongClick != null) {
+                                  longDone[0] = true
+                                  onLongClick()
+                              }
+                              true
+                          } else if (k.action == AKeyEvent.ACTION_UP) {
+                              if (!longDone[0]) onClick()
+                              longDone[0] = false
+                              true
+                          } else {
+                              false
+                          }
+                      }
+                      .onFocusChanged {
+                          focused = it.isFocused
+                          if (it.isFocused) onFocus?.invoke()
+                      }
+                      .focusable()
+                      .pointerInput(Unit) {
+                          detectTapGestures(
+                              onTap = { clickNow() },
+                              onLongPress = { longNow?.invoke() }
+                          )
+                      }
+                      .then(borderMod),
+                  content = content
+              )
+          }
+
+          @Composable
+          fun Clock(h24: Boolean) {
+              val time by produceState("", h24) {
+                  while (true) {
+                      value = SimpleDateFormat(if (h24) "HH:mm" else "h:mm", Locale.getDefault()).format(Date())
+                      delay(15000L)
+                  }
+              }
+              Text(time, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+          }
+
+          // ---------- NEXUS splash ----------
+
+          fun DrawScope.drawNexusN(cx: Float, cy: Float, w: Float) {
+              val h = w * 46f / 48f
+              val left = cx - w / 2f
+              val top = cy - h / 2f
+              val pts = listOf(
+                  0f to 46f, 0f to 0f, 12f to 0f, 36f to 32f, 36f to 0f,
+                  48f to 0f, 48f to 46f, 36f to 46f, 12f to 14f, 12f to 46f
+              )
+              val path = Path()
+              pts.forEachIndexed { i, p ->
+                  val x = left + p.first / 48f * w
+                  val y = top + p.second / 46f * h
+                  if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+              }
+              path.close()
+              val brush = Brush.linearGradient(
+                  listOf(Color(0xFF00D1FF), Color(0xFF007BFF)),
+                  start = Offset(left, top),
+                  end = Offset(left + w, top + h)
+              )
+              drawPath(path, brush = brush)
+              drawPath(path, brush = brush, style = Stroke(width = w * 0.06f, join = StrokeJoin.Round))
+          }
+
+          @Composable
+          fun NexusSplash(onFinished: () -> Unit) {
+              val logoA = remember { Animatable(0f) }
+              val nameA = remember { Animatable(0f) }
+              val tagA = remember { Animatable(0f) }
+              val barP = remember { Animatable(0f) }
+              val overall = remember { Animatable(1f) }
+              LaunchedEffect(Unit) {
+                  coroutineScope {
+                      launch { logoA.animateTo(1f, tween(550)) }
+                      launch {
+                          delay(300L)
+                          nameA.animateTo(1f, tween(450))
+                      }
+                      launch {
+                          delay(600L)
+                          tagA.animateTo(1f, tween(450))
+                      }
+                      launch { barP.animateTo(1f, tween(1250, easing = LinearEasing)) }
+                      delay(1400L)
+                  }
+                  overall.animateTo(0f, tween(300))
+                  onFinished()
+              }
+              Box(
+                  Modifier
+                      .fillMaxSize()
+                      .graphicsLayer { alpha = overall.value }
+                      .background(Brush.verticalGradient(listOf(Color(0xFF0B1420), Color(0xFF050A12)))),
+                  contentAlignment = Alignment.Center
+              ) {
+                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                      Box(
+                          Modifier
+                              .size(190.dp)
+                              .graphicsLayer {
+                                  alpha = logoA.value
+                                  scaleX = 0.82f + 0.18f * logoA.value
+                                  scaleY = 0.82f + 0.18f * logoA.value
+                              },
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Canvas(Modifier.fillMaxSize()) {
+                              val c = Offset(size.width / 2f, size.height / 2f)
+                              val glowR = size.width * 0.62f
+                              drawCircle(
+                                  brush = Brush.radialGradient(
+                                      listOf(Color(0x6600AAFF), Color.Transparent),
+                                      center = c,
+                                      radius = glowR
+                                  ),
+                                  radius = glowR,
+                                  center = c
+                              )
+                              drawNexusN(c.x, c.y, size.width * 0.42f)
+                          }
+                      }
+                      Spacer(Modifier.height(14.dp))
+                      Text(
+                          "NEXUS",
+                          color = Color(0xFFE6F0FF),
+                          fontSize = 34.sp,
+                          fontWeight = FontWeight.Medium,
+                          letterSpacing = 14.sp,
+                          modifier = Modifier.graphicsLayer { alpha = nameA.value }
+                      )
+                      Spacer(Modifier.height(10.dp))
+                      Text(
+                          "YOUR TV. YOUR WAY.",
+                          color = Color(0xFF7FA3C8),
+                          fontSize = 13.sp,
+                          letterSpacing = 6.sp,
+                          modifier = Modifier.graphicsLayer { alpha = tagA.value }
+                      )
+                      Spacer(Modifier.height(34.dp))
+                      Box(
+                          Modifier
+                              .width(220.dp)
+                              .height(3.dp)
+                              .graphicsLayer { alpha = tagA.value }
+                              .clip(RoundedCornerShape(2.dp))
+                              .background(Color(0x22FFFFFF))
+                      ) {
+                          Box(
+                              Modifier
+                                  .fillMaxHeight()
+                                  .fillMaxWidth(barP.value)
+                                  .background(
+                                      Brush.horizontalGradient(listOf(Color(0xFF00D1FF), Color(0xFF007BFF)))
+                                  )
+                          )
+                      }
+                  }
+              }
+          }
+          __END__
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/res/values/colors.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="nexus_bg">#0B1420</color>
+              <color name="nexus_blue">#00D1FF</color>
+              <color name="nexus_deep">#007BFF</color>
+              <color name="nexus_charcoal">#1A1F2B</color>
+              <color name="nexus_text">#E6F0FF</color>
+          </resources>
+          __END__
+          mkdir -p app/src/main/res/drawable
+          cat > app/src/main/res/drawable/nexus_logo.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:aapt="http://schemas.android.com/aapt"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:pathData="M30,77 L30,31 L42,31 L66,63 L66,31 L78,31 L78,77 L66,77 L42,45 L42,77 Z"
+                  android:strokeColor="#0A9BFF"
+                  android:strokeWidth="3"
+                  android:strokeLineJoin="round">
+                  <aapt:attr name="android:fillColor">
+                      <gradient
+                          android:startX="30"
+                          android:startY="31"
+                          android:endX="78"
+                          android:endY="77"
+                          android:type="linear">
+                          <item android:color="#00D1FF" android:offset="0" />
+                          <item android:color="#007BFF" android:offset="1" />
+                      </gradient>
+                  </aapt:attr>
+              </path>
+          </vector>
+          __END__
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/nexus_bg" />
+              <foreground android:drawable="@drawable/nexus_logo" />
+          </adaptive-icon>
+          __END__
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml <<'__END__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/nexus_bg" />
+              <foreground android:drawable="@drawable/nexus_logo" />
+          </adaptive-icon>
+          __END__
+          mkdir -p app/src/main/res/drawable-nodpi
+          base64 -d > app/src/main/res/drawable-nodpi/nexus_banner.jpg <<'__END__'
+          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
+          __END__
+          find . -name '*.kt' -o -name '*.kts' -o -name '*.xml' | grep -v '^./.git' | sort
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install signing key
+        run: |
+          mkdir -p ~/.android
+          echo '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' | base64 -d > ~/.android/debug.keystore
+          cp ~/.android/debug.keystore app/debug.keystore
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon
+      - name: Publish APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: NEXUS build ${{ github.run_number }}
+          files: app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
